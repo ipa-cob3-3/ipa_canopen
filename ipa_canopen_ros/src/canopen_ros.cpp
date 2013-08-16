@@ -215,34 +215,57 @@ void readParamsFromParameterServer(ros::NodeHandle n)
         buses[name] = busParam;
     }
 
+    std::cout << "1" << std::endl;
     XmlRpc::XmlRpcValue chainNames_XMLRPC;
     n.getParam("chains", chainNames_XMLRPC);
+    std::cout << "2" << std::endl;
+
 
     for (int i=0; i<chainNames_XMLRPC.size(); i++)
         chainNames.push_back(static_cast<std::string>(chainNames_XMLRPC[i]));
 
-    for (auto chainName : chainNames) {
+    std::cout << "3" << std::endl;
+    for (auto chainName : chainNames)
+    {
+        jointNames.clear();
         XmlRpc::XmlRpcValue jointNames_XMLRPC;
         n.getParam("/" + chainName + "/joint_names", jointNames_XMLRPC);
+        std::cout << "4" << chainName << std::endl;
 
         for (int i=0; i<jointNames_XMLRPC.size(); i++)
+        {
             jointNames.push_back(static_cast<std::string>(jointNames_XMLRPC[i]));
+            std::cout << jointNames_XMLRPC[i] << std::endl;
+        }
+        std::cout << "5" << std::endl;
 
         XmlRpc::XmlRpcValue moduleIDs_XMLRPC;
         n.getParam("/" + chainName + "/module_ids", moduleIDs_XMLRPC);
         std::vector<uint8_t> moduleIDs;
         for (int i=0; i<moduleIDs_XMLRPC.size(); i++)
+        {
             moduleIDs.push_back(static_cast<int>(moduleIDs_XMLRPC[i]));
+            std::cout << moduleIDs_XMLRPC[i] << std::endl;
+        }
 
+        std::cout << "6" << std::endl;
         XmlRpc::XmlRpcValue devices_XMLRPC;
         n.getParam("/" + chainName + "/devices", devices_XMLRPC);
         std::vector<std::string> devices;
         for (int i=0; i<devices_XMLRPC.size(); i++)
+        {
             devices.push_back(static_cast<std::string>(devices_XMLRPC[i]));
+            std::cout << devices_XMLRPC[i] << std::endl;
+        }
 
+        std::cout << "7" << std::endl;
         for (unsigned int i=0; i<jointNames.size(); i++)
+        {
             canopen::devices[ moduleIDs[i] ] = canopen::Device(moduleIDs[i], jointNames[i], chainName, devices[i]);
+            std::cout << moduleIDs[i]<<  jointNames[i]<< chainName<< devices[i] << std::endl;
+        }
 
+        std::cout << "18" << std::endl;
         canopen::deviceGroups[ chainName ] = canopen::DeviceGroup(moduleIDs, jointNames, devices);
 
     }
@@ -344,8 +367,9 @@ int main(int argc, char **argv)
 
     ros::init(argc, argv, "canopen_ros");
     ros::NodeHandle n(""); // ("~");
-
+    std::cout << "GHGRWJKGR" << std::endl;
     readParamsFromParameterServer(n);
+    std::cout << "GRGEREHJWGRJGEJWGRWERG" << std::endl;
 
     std::cout << "Sync Interval" << buses.begin()->second.syncInterval << std::endl;
     canopen::syncInterval = std::chrono::milliseconds( buses.begin()->second.syncInterval );
@@ -417,7 +441,7 @@ int main(int argc, char **argv)
 
     ros::Rate loop_rate(lr);
 
-    setJointConstraints(n);
+    //setJointConstraints(n);
 
     while (ros::ok())
     {
