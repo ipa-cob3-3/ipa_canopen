@@ -44,10 +44,12 @@ int main(int argc, char *argv[]) {
 	canopen::init(deviceFile, canopen::syncInterval);
 	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  	canopen::sendSDO(CANid, canopen::MODES_OF_OPERATION, (uint8_t)canopen::MODES_OF_OPERATION_INTERPOLATED_POSITION_MODE);
+    canopen::sendSDO(CANid, canopen::MODES_OF_OPERATION, (uint8_t)canopen::MODES_OF_OPERATION_INTERPOLATED_POSITION_MODE, deviceFile);
 	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-	canopen::initDeviceManagerThread(canopen::deviceManager);
+    //canopen::initDeviceManagerThread(canopen::deviceManager);
+    canopen::manager_threads.push_back(std::thread(canopen::deviceManager,deviceFile));
+
 	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	canopen::devices[CANid].setInitialized(true);
 	std::this_thread::sleep_for(std::chrono::milliseconds(100));

@@ -76,6 +76,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include "schunkErrors.h"
+#include<algorithm>
 
 namespace canopen{
 
@@ -319,6 +320,10 @@ namespace canopen{
                 actualVel_ = vel;
             }
 
+            void setDeviceFile(std::string devF){
+                deviceFile_ = devF;
+            }
+
             void setDesiredVel(double vel){
                 desiredVel_ = vel;
             }
@@ -458,6 +463,7 @@ namespace canopen{
 
             std::vector<uint8_t> CANids_;
             std::vector<std::string> names_;
+            std::vector<std::string> deviceFiles_;
 
         public:
 
@@ -466,9 +472,10 @@ namespace canopen{
             DeviceGroup(std::vector<uint8_t> CANids):
                 CANids_(CANids) {};
 
-            DeviceGroup(std::vector<uint8_t> CANids, std::vector<std::string> names):
+            DeviceGroup(std::vector<uint8_t> CANids, std::vector<std::string> names, std::vector<std::string> deviceFiles):
                 CANids_(CANids),
-                names_(names) {};
+                names_(names),
+                deviceFiles_(deviceFiles) {};
 
             std::vector<uint8_t> getCANids(){
                 return CANids_;
@@ -476,6 +483,10 @@ namespace canopen{
 
             std::vector<std::string> getNames(){
                 return names_;
+            }
+
+            std::vector<std::string> getDeviceFiles(){
+                return deviceFiles_;
             }
 
             std::vector<double> getActualPos() {
@@ -546,7 +557,8 @@ namespace canopen{
     void errorword_incoming(uint8_t CANid, BYTE data[1]);
 
     extern std::map<std::string, DeviceGroup> deviceGroups;	// DeviceGroup name -> DeviceGroup object
-    extern HANDLE h;
+    extern std::map<std::string, HANDLE> h;
+
     extern std::map<SDOkey, std::function<void (uint8_t CANid, BYTE data[8])> > incomingDataHandlers;
     extern std::map<uint16_t, std::function<void (const TPCANRdMsg m)> > incomingPDOHandlers;
     extern std::map<uint16_t, std::function<void (const TPCANRdMsg m)> > incomingEMCYHandlers;
@@ -562,30 +574,33 @@ namespace canopen{
     //	define get errors functions
     /***************************************************************/
 
-    void getErrors(uint16_t CANid);
-    std::vector<char> obtainManSWVersion(uint16_t CANid, TPCANRdMsg* m);
-    std::vector<char> obtainManHWVersion(uint16_t CANid, TPCANRdMsg* m);
-    std::vector<char> obtainManDevName(uint16_t CANid, TPCANRdMsg* m);
-    std::vector<uint16_t> obtainVendorID(uint16_t CANid, TPCANRdMsg* m);
-    uint16_t obtainRevNr(uint16_t CANid, TPCANRdMsg* m);
-    std::vector<uint16_t> obtainProdCode(uint16_t CANid, TPCANRdMsg* m);
-    void readErrorsRegister(uint16_t CANid, TPCANRdMsg *m);
-    void readManErrReg(uint16_t CANid, TPCANRdMsg *m);
+    void getErrors(uint16_t CANid, std::string devName);
+    std::vector<char> obtainManSWVersion(uint16_t CANid, TPCANRdMsg* m, std::string devName);
+    std::vector<char> obtainManHWVersion(uint16_t CANid, TPCANRdMsg* m, std::string devName);
+    std::vector<char> obtainManDevName(uint16_t CANid, TPCANRdMsg* m, std::string devName);
+    std::vector<uint16_t> obtainVendorID(uint16_t CANid, TPCANRdMsg* m, std::string devName);
+    uint16_t obtainRevNr(uint16_t CANid, TPCANRdMsg* m, std::string devName);
+    std::vector<uint16_t> obtainProdCode(uint16_t CANid, TPCANRdMsg* m, std::string devName);
+    void readErrorsRegister(uint16_t CANid, TPCANRdMsg *m, std::string devName);
+    void readManErrReg(uint16_t CANid, TPCANRdMsg *m, std::string devName);
 
 
     /***************************************************************/
     //	define init and recover variables and functions
     /***************************************************************/
+    extern std::vector <std::thread> listener_threads;
+    extern std::vector <std::thread> manager_threads;
+    extern std::vector <std::string> open_devices;
 
     extern bool atFirstInit;
     extern bool recover_active;
 
     bool openConnection(std::string devName);
     void init(std::string deviceFile, std::chrono::milliseconds syncInterval);
-    void pre_init();
+    void pre_init(std::string devName);
     void recover(std::string deviceFile, std::chrono::milliseconds syncInterval);
 
-    extern std::function< void (uint16_t CANid, double positionValue) > sendPos;
+    extern std::function< void (uint16_t CANid, double positionValue, std::string devName) > sendPos;
     extern std::function< void (uint16_t CANid) > geterrors;
 
     /***************************************************************/
@@ -600,11 +615,11 @@ namespace canopen{
 
     extern TPCANMsg NMTmsg;
 
-    inline void sendNMT(uint8_t CANid, uint8_t command){
+    inline void sendNMT(uint8_t CANid, uint8_t command, std::string devName){
         //std::cout << "Sending NMT. CANid: " << (uint16_t)CANid << "\tcommand: " << (uint16_t)command << std::endl;
         NMTmsg.DATA[0] = command;
         NMTmsg.DATA[1] = CANid;
-        CAN_Write(h, &NMTmsg);
+        CAN_Write(h[devName], &NMTmsg);
     }
 
     /***************************************************************/
@@ -613,8 +628,8 @@ namespace canopen{
 
     extern TPCANMsg syncMsg;
 
-    inline void sendSync() {
-        CAN_Write(h, &syncMsg);
+    inline void sendSync(std::string devName) {
+        CAN_Write(h[devName], &syncMsg);
     }
 
     /***************************************************************/
@@ -712,24 +727,24 @@ namespace canopen{
     const int8_t IP_TIME_INDEX_HUNDREDMICROSECONDS = 0xFC;
     const uint8_t SYNC_TIMEOUT_FACTOR_DISABLE_TIMEOUT = 0;
 
-    void sendSDO(uint8_t CANid, SDOkey sdo);
-    void processSingleSDO(uint8_t CANid, TPCANRdMsg* message);
-    void requestDataBlock1(uint8_t CANid);
-    void requestDataBlock2(uint8_t CANid);
+    void sendSDO(uint8_t CANid, SDOkey sdo, std::string devName);
+    void processSingleSDO(uint8_t CANid, TPCANRdMsg* message, std::string devName);
+    void requestDataBlock1(uint8_t CANid, std::string devName);
+    void requestDataBlock2(uint8_t CANid,std::string devName);
 
-    void sendSDO(uint8_t CANid, SDOkey sdo, uint32_t value);
-    void sendSDO(uint8_t CANid, SDOkey sdo, int32_t value);
-    void sendSDO(uint8_t CANid, SDOkey sdo, uint16_t value);
-    void sendSDO(uint8_t CANid, SDOkey sdo, uint8_t value);
+    void sendSDO(uint8_t CANid, SDOkey sdo, uint32_t value, std::string devName);
+    void sendSDO(uint8_t CANid, SDOkey sdo, int32_t value,std::string devName);
+    void sendSDO(uint8_t CANid, SDOkey sdo, uint16_t value, std::string devName);
+    void sendSDO(uint8_t CANid, SDOkey sdo, uint8_t value, std::string devName);
 
     /***************************************************************/
     //		define PDO protocol functions
     /***************************************************************/
 
     void initDeviceManagerThread(std::function<void ()> const& deviceManager);
-    void deviceManager();
+    void deviceManager(std::string devName);
 
-    void defaultPDOOutgoing(uint16_t CANid, double positionValue);
+    void defaultPDOOutgoing(uint16_t CANid, double positionValue, std::string devName);
     void defaultPDO_incoming(uint16_t CANid, const TPCANRdMsg m);
     void defaultEMCY_incoming(uint16_t CANid, const TPCANRdMsg m);
 
@@ -737,8 +752,10 @@ namespace canopen{
     //		define functions for receiving data
     /***************************************************************/
 
-    void initListenerThread(std::function<void ()> const& listener);
-    void defaultListener();
+    void initListenerThread(const std::function<void (std::string)> &listener, std::string);
+    void defaultListener(std::string devName);
+
+
 }
 
 #endif

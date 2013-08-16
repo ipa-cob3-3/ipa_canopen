@@ -92,24 +92,24 @@ JointLimits* joint_limits_;
 std::vector<std::string> chainNames;
 std::vector<std::string> jointNames;
 
-bool CANopenInit(cob_srvs::Trigger::Request &req, cob_srvs::Trigger::Response &res, std::string chainName)
+bool CANopenInit(cob_srvs::Trigger::Request &req, cob_srvs::Trigger::Response &res, std::string chainName, std::string portName)
 {
 
-    canopen::init(deviceFile, canopen::syncInterval);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+    canopen::init(portName, canopen::syncInterval);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     for (auto device : canopen::devices)
     {
-
-        canopen::sendSDO(device.second.getCANid(), canopen::MODES_OF_OPERATION, canopen::MODES_OF_OPERATION_INTERPOLATED_POSITION_MODE);
+        canopen::sendSDO(device.second.getCANid(), canopen::MODES_OF_OPERATION, canopen::MODES_OF_OPERATION_INTERPOLATED_POSITION_MODE, portName);
         std::cout << "Setting IP mode for: " << (uint16_t)device.second.getCANid() << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    canopen::initDeviceManagerThread(canopen::deviceManager);
+    canopen::manager_threads.push_back(std::thread(canopen::deviceManager,portName));
+    //canopen::initDeviceManagerThread(canopen::deviceManager);
 
     for (auto device : canopen::devices)
     {
@@ -126,18 +126,18 @@ bool CANopenInit(cob_srvs::Trigger::Request &req, cob_srvs::Trigger::Response &r
 }
 
 
-bool CANopenRecover(cob_srvs::Trigger::Request &req, cob_srvs::Trigger::Response &res, std::string chainName)
+bool CANopenRecover(cob_srvs::Trigger::Request &req, cob_srvs::Trigger::Response &res, std::string chainName, std::string portName)
 {
 
 
 
-    canopen::recover(deviceFile, canopen::syncInterval);
+    canopen::recover(portName, canopen::syncInterval);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
 
     for (auto device : canopen::devices)
     {
-        canopen::sendSDO(device.second.getCANid(), canopen::MODES_OF_OPERATION, canopen::MODES_OF_OPERATION_INTERPOLATED_POSITION_MODE);
+        canopen::sendSDO(device.second.getCANid(), canopen::MODES_OF_OPERATION, canopen::MODES_OF_OPERATION_INTERPOLATED_POSITION_MODE, device.second.getDeviceFile());
         std::cout << "Setting IP mode for: " << (uint16_t)device.second.getCANid() << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -149,8 +149,8 @@ bool CANopenRecover(cob_srvs::Trigger::Request &req, cob_srvs::Trigger::Response
         canopen::devices[device.second.getCANid()].setDesiredPos((double)device.second.getActualPos());
         canopen::devices[device.second.getCANid()].setDesiredVel(0);
 
-        canopen::sendPos((uint16_t)device.second.getCANid(), (double)device.second.getDesiredPos());
-        canopen::sendPos((uint16_t)device.second.getCANid(), (double)device.second.getDesiredPos());
+        canopen::sendPos((uint16_t)device.second.getCANid(), (double)device.second.getDesiredPos(),device.second.getDeviceFile());
+        canopen::sendPos((uint16_t)device.second.getCANid(), (double)device.second.getDesiredPos(), device.second.getDeviceFile());
 
         device.second.setInitialized(true);
     }
@@ -195,6 +195,7 @@ void setVel(const brics_actuator::JointVelocities &msg, std::string chainName)
 void readParamsFromParameterServer(ros::NodeHandle n)
 {
     XmlRpc::XmlRpcValue busParams;
+    std::vector<std::string> port_names;
 
     if (!n.hasParam("devices") || !n.hasParam("chains"))
     {
@@ -208,6 +209,7 @@ void readParamsFromParameterServer(ros::NodeHandle n)
     {
         BusParams busParam;
         auto name = static_cast<std::string>(busParams[i]["name"]);
+        port_names.push_back(name);
         busParam.baudrate = static_cast<std::string>(busParams[i]["baudrate"]);
         busParam.syncInterval = static_cast<int>(busParams[i]["sync_interval"]);
         buses[name] = busParam;
@@ -241,7 +243,7 @@ void readParamsFromParameterServer(ros::NodeHandle n)
         for (unsigned int i=0; i<jointNames.size(); i++)
             canopen::devices[ moduleIDs[i] ] = canopen::Device(moduleIDs[i], jointNames[i], chainName, devices[i]);
 
-        canopen::deviceGroups[ chainName ] = canopen::DeviceGroup(moduleIDs, jointNames);
+        canopen::deviceGroups[ chainName ] = canopen::DeviceGroup(moduleIDs, jointNames, devices);
 
     }
 
@@ -347,10 +349,13 @@ int main(int argc, char **argv)
 
     std::cout << "Sync Interval" << buses.begin()->second.syncInterval << std::endl;
     canopen::syncInterval = std::chrono::milliseconds( buses.begin()->second.syncInterval );
+
+
     // ^ todo: this only works with a single CAN bus; add support for more buses!
     deviceFile = buses.begin()->first;
     std::cout << "Opening device..." << deviceFile << std::endl;
     // ^ todo: this only works with a single CAN bus; add support for more buses!
+
 
     if (!canopen::openConnection(deviceFile))
     {
@@ -362,7 +367,8 @@ int main(int argc, char **argv)
         std::cout << "Connection to CAN bus established" << std::endl;
     }
 
-    canopen::pre_init();
+
+    canopen::pre_init(deviceFile);
 
     /********************************************/
 
@@ -392,9 +398,9 @@ int main(int argc, char **argv)
     {
         ROS_INFO("Configuring %s", it.first.c_str());
 
-        initCallbacks.push_back( boost::bind(CANopenInit, _1, _2, it.first) );
+        initCallbacks.push_back( boost::bind(CANopenInit, _1, _2, it.first, it.second.getDeviceFiles()[0]) );
         initServices.push_back( n.advertiseService("/" + it.first + "/init", initCallbacks.back()) );
-        recoverCallbacks.push_back( boost::bind(CANopenRecover, _1, _2, it.first) );
+        recoverCallbacks.push_back( boost::bind(CANopenRecover, _1, _2, it.first, it.second.getDeviceFiles()[0]) );
         recoverServices.push_back( n.advertiseService("/" + it.first + "/recover", recoverCallbacks.back()) );
         setOperationModeCallbacks.push_back( boost::bind(setOperationModeCallback, _1, _2, it.first) );
         setOperationModeServices.push_back( n.advertiseService("/" + it.first + "/set_operation_mode", setOperationModeCallbacks.back()) );
