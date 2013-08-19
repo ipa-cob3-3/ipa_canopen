@@ -88,7 +88,8 @@ std::map<std::string, BusParams> buses;
 
 std::string deviceFile;
 
-JointLimits* joint_limits_;
+std::map<std::string, JointLimits> joint_limits_;
+
 std::vector<std::string> chainNames;
 std::vector<std::string> jointNames;
 
@@ -185,8 +186,9 @@ void setVel(const brics_actuator::JointVelocities &msg, std::string chainName)
             positions.push_back((double)device.second.getDesiredPos());
         }
 
-        joint_limits_->checkVelocityLimits(velocities);
-        joint_limits_->checkPositionLimits(velocities, positions);
+
+        joint_limits_[chainName].checkVelocityLimits(velocities);
+        joint_limits_[chainName].checkPositionLimits(velocities, positions);
 
         canopen::deviceGroups[chainName].setVel(velocities);
     }
@@ -272,7 +274,7 @@ void readParamsFromParameterServer(ros::NodeHandle n)
 
 }
 
-void setJointConstraints(ros::NodeHandle n)
+void setJointConstraints(std::string name, ros::NodeHandle n)
 {
     /******************************************
      *
@@ -281,7 +283,7 @@ void setJointConstraints(ros::NodeHandle n)
      */
 
     /// Get robot_description from ROS parameter server
-      joint_limits_ = new JointLimits();
+      //joint_limits_ = new JointLimits();
       int DOF = jointNames.size();
 
       std::string param_name = "/robot_description";
@@ -347,11 +349,11 @@ void setJointConstraints(ros::NodeHandle n)
 
       /// Set parameters
 
-      joint_limits_->setDOF(DOF);
-      joint_limits_->setUpperLimits(UpperLimits);
-      joint_limits_->setLowerLimits(LowerLimits);
-      joint_limits_->setMaxVelocities(MaxVelocities);
-      joint_limits_->setOffsets(Offsets);
+      joint_limits_[name].setDOF(DOF);
+      joint_limits_[name].setUpperLimits(UpperLimits);
+      joint_limits_[name].setLowerLimits(LowerLimits);
+      joint_limits_[name].setMaxVelocities(MaxVelocities);
+      joint_limits_[name].setOffsets(Offsets);
 
      /********************************************
      *
@@ -435,13 +437,16 @@ int main(int argc, char **argv)
         currentOperationModePublishers[it.first] = n.advertise<std_msgs::String>("/" + it.first + "/current_operationmode", 1);
 
         statePublishers[it.first] = n.advertise<pr2_controllers_msgs::JointTrajectoryControllerState>("/" + it.first + "/state", 1);
+
+        std::cout <<"IT FIRSTTTT" << it.first <<  std::endl;
+        setJointConstraints(it.first, n);
     }
 
     double lr = 1000.0 / std::chrono::duration_cast<std::chrono::milliseconds>(canopen::syncInterval).count();
 
     ros::Rate loop_rate(lr);
 
-    //setJointConstraints(n);
+
 
     while (ros::ok())
     {
