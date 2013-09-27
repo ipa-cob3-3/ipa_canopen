@@ -715,8 +715,7 @@ namespace canopen{
 
         while(true)
         {
-            std::cout << "DEVICE NAME" << devName << std::endl;
-            std::cout << "Reading incoming data" << std::endl;
+
             TPCANRdMsg m;
 
             errno = LINUX_CAN_Read(h[devName], &m);
