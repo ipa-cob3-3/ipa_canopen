@@ -183,7 +183,6 @@ namespace canopen{
 
             if (std::find(open_devices.begin(), open_devices.end(), deviceFile) == open_devices.end())
             {
-                std::cout << "creating" << std::endl;
                 listener_threads.push_back(std::thread(defaultListener, deviceFile));
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -207,7 +206,12 @@ namespace canopen{
 
         for (auto device : devices)
         {
-
+			 if(device.second.getMotorState() == MS_OPERATION_ENABLED)
+            {
+                std::cout << "Node" << device.second.getCANid() << "is operational" << std::endl;
+            }
+            else
+            {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             std::cout << "Resetting CAN-device with CAN-ID " << (uint16_t)device.second.getCANid() << std::endl;
             canopen::sendNMT((uint16_t)device.second.getCANid(), canopen::NMT_RESET_NODE, device.second.getDeviceFile());
@@ -221,7 +225,6 @@ namespace canopen{
 
             canopen::setMotorState(device.second.getCANid(), canopen::MS_SWITCHED_ON_DISABLED);
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            std::cout << "Rdzuasuitrhweitjkwehegwfqgefhjwfqewhqfrg " << (uint16_t)device.second.getCANid() << std::endl;
 
             canopen::setMotorState(device.second.getCANid(), canopen::MS_READY_TO_SWITCH_ON);
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -239,6 +242,7 @@ namespace canopen{
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             sendSDO((uint16_t)device.second.getCANid(), canopen::SYNC_TIMEOUT_FACTOR, (uint8_t)canopen::SYNC_TIMEOUT_FACTOR_DISABLE_TIMEOUT, device.second.getDeviceFile());
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
 
         }
 
